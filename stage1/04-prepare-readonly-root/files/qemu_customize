@@ -1,0 +1,40 @@
+#!/bin/bash
+
+set -euo pipefail
+
+# Do some `init` work
+mount -t proc proc /proc
+mount -t sysfs sys /sys
+mount -t tmpfs tmp /run
+mount -t tmpfs tmp /tmp
+
+# Make sure we can use our USB network devices (for QEMU)
+modprobe cdc_subset
+dhclient -i usb0
+
+# Set an appropriate hostname
+/usr/bin/hostname "$(cat /etc/hostname)"
+
+# Load the fake hwclock that's burned into the SD card
+/sbin/fake-hwclock load force
+
+# Convert to read-write here, we'll just shutdown when we're done.
+mount /boot
+mount /data
+rw
+
+# First, grow the /data partition
+/usr/lib/grow_data_partition
+
+# Next, generate SSH keys
+/usr/lib/regenerate_ssh_host_keys
+
+# Next, pull down TFTP bootstrapping tarball
+mkdir -p /tmp/qemu-bootstrap
+cd /tmp/qemu-bootstrap
+curl tftp://10.0.2.2/bootstrap.tar.gz | tar zx
+./bootstrap.sh
+
+# We're all done, let's bow out!
+sync
+poweroff -f

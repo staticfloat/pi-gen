@@ -1,0 +1,119 @@
+#!/bin/bash
+
+set -euo pipefail
+
+get_variables () {
+    ROOT_PART_DEV=$(findmnt / -o source -n)
+    ROOT_PART_NAME=$(echo "$ROOT_PART_DEV" | cut -d "/" -f 3)
+    ROOT_DEV_NAME=$(echo /sys/block/*/"${ROOT_PART_NAME}" | cut -d "/" -f 4)
+    ROOT_DEV="/dev/${ROOT_DEV_NAME}"
+    ROOT_PART_NUM=$(cat "/sys/block/${ROOT_DEV_NAME}/${ROOT_PART_NAME}/partition")
+
+    BOOT_PART_DEV=$(findmnt /boot -o source -n)
+    BOOT_PART_NAME=$(echo "$BOOT_PART_DEV" | cut -d "/" -f 3)
+    BOOT_DEV_NAME=$(echo /sys/block/*/"${BOOT_PART_NAME}" | cut -d "/" -f 4)
+    BOOT_PART_NUM=$(cat "/sys/block/${BOOT_DEV_NAME}/${BOOT_PART_NAME}/partition")
+
+    DATA_PART_DEV=$(findmnt /data -o source -n)
+    DATA_PART_NAME=$(echo "$DATA_PART_DEV" | cut -d "/" -f 3)
+    DATA_DEV_NAME=$(echo /sys/block/*/"${DATA_PART_NAME}" | cut -d "/" -f 4)
+    DATA_PART_NUM=$(cat "/sys/block/${DATA_DEV_NAME}/${DATA_PART_NAME}/partition")
+
+    OLD_DISKID=$(fdisk -l "$ROOT_DEV" | sed -n 's/Disk identifier: 0x\([^ ]*\)/\1/p')
+
+    # This size is in "logical blocks"
+    ROOT_DEV_BLOCKS=$(cat "/sys/block/${ROOT_DEV_NAME}/size")
+    ROOT_DEV_BLOCKSIZE=$(cat "/sys/block/${ROOT_DEV_NAME}/queue/logical_block_size")
+    DEV_END=$((ROOT_DEV_BLOCKS - 1))
+
+    PARTITION_TABLE=$(parted -m "$ROOT_DEV" unit s print | tr -d 's')
+
+    LAST_PART_NUM=$(echo "$PARTITION_TABLE" | tail -n 1 | cut -d ":" -f 1)
+
+    ROOT_PART_LINE=$(echo "$PARTITION_TABLE" | grep -e "^${ROOT_PART_NUM}:")
+    ROOT_PART_START=$(echo "$ROOT_PART_LINE" | cut -d ":" -f 2)
+    ROOT_PART_END=$(echo "$ROOT_PART_LINE" | cut -d ":" -f 3)
+
+    DATA_PART_LINE=$(echo "$PARTITION_TABLE" | grep -e "^${DATA_PART_NUM}:")
+    DATA_PART_START=$(echo "$DATA_PART_LINE" | cut -d ":" -f 2)
+    DATA_PART_END=$(echo "$DATA_PART_LINE" | cut -d ":" -f 3)
+    return 0
+}
+
+should_resize () {
+    if [ "$DATA_PART_NUM" -ne "$LAST_PART_NUM" ]; then
+        # Skip resize if data partition is not last
+        echo "Data partition is not last partition" >&2
+        return 1
+    fi
+
+    if [ "$DATA_PART_END" -gt "$DEV_END" ]; then
+        echo "Data partition runs past the end of device" >&2
+        return 1
+    fi
+
+    if [ ! -b "$ROOT_DEV" ] || \
+         [ ! -b "$ROOT_PART_DEV" ] || \
+         [ ! -b "$DATA_PART_DEV" ] || \
+         [ ! -b "$BOOT_PART_DEV" ] ; then
+        echo "Could not determine partitions" >&2
+        return 1
+    fi
+    if [ "$DATA_PART_END" -eq "$DEV_END" ]; then
+        # Root partition already the expected size
+        echo "Data partition already expanded properly" >&2
+        return 1
+    fi
+    return 0
+}
+
+randomize_partuuid() {
+    # `tr` complains about `dd` closing its pipe, so use `|| true` to allow
+    # `tr`'s erroring to be ignored.
+    NEW_DISKID="$( (tr -dc 'a-f0-9' </dev/hwrng 2>/dev/null || true) | dd bs=1 count=8)"
+
+    # Keep the tab indentation, otherwise this `EOF` doesn't work!
+    FDISK_CMD=$(cat <<-EOF
+x
+i
+0x${NEW_DISKID}
+r
+w
+EOF
+    )
+    if /usr/sbin/fdisk "$ROOT_DEV" >/dev/null <<<"${FDISK_CMD}"; then
+        sed -i "s/${OLD_DISKID}/${NEW_DISKID}/g" /etc/fstab
+        sed -i "s/${OLD_DISKID}/${NEW_DISKID}/g" /boot/cmdline.txt
+    else
+        echo "fdisk failed! ($?)"
+    fi
+}
+
+do_resize () {
+    umount /data
+
+    echo "Resizing /data partition from $((($DATA_PART_END - $DATA_PART_START) * $ROOT_DEV_BLOCKSIZE)) B -> $((($DEV_END - $DATA_PART_START) * $ROOT_DEV_BLOCKSIZE)) B"
+    if ! parted -m "$ROOT_DEV" u s resizepart "$DATA_PART_NUM" "$DEV_END"; then
+        echo "Partition table resize of the data partition ($DATA_PART_DEV) failed ($?)" >&2
+        return 1
+    fi
+    /usr/sbin/partprobe
+
+    if ! /usr/sbin/e2fsck -f "$DATA_PART_DEV"; then
+        echo "Cautionary fsck failed ($?)"
+        return 1
+    fi
+    if ! /usr/sbin/resize2fs "$DATA_PART_DEV"; then
+        echo "Data partition resize failed ($?)" >&2
+        return 1
+    fi
+
+    mount /data
+    return 0
+}
+
+get_variables
+if should_resize; then
+    do_resize
+    randomize_partuuid
+fi

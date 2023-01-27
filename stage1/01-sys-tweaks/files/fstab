@@ -3,3 +3,10 @@ BOOTDEV  /boot                       vfat    defaults,ro          0    2
 ROOTDEV  /                           ext4    defaults,noatime,ro  0    1
 DATADEV  /data                       ext4    defaults,noatime     0    2
 
+# Create tmpfs mounts for all sorts of useful system points
+tmpfs    /tmp                        tmpfs   nosuid,nodev      0       0
+tmpfs    /var/log                    tmpfs   nosuid,nodev      0       0
+tmpfs    /var/tmp                    tmpfs   nosuid,nodev      0       0
+tmpfs    /var/lib/dhcp               tmpfs   nosuid,nodev      0       0
+tmpfs    /var/lib/systemd/timesync   tmpfs   nosuid,nodev      0       0
+tmpfs    /var/lib/systemd-logind     tmpfs   nosuid,nodev      0       0
