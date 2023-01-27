@@ -12,6 +12,7 @@ if [ "${NO_PRERUN_QCOW2}" = "0" ]; then
 
 	BOOT_SIZE="$((256 * 1024 * 1024))"
 	ROOT_SIZE=$(du --apparent-size -s "${EXPORT_ROOTFS_DIR}" --exclude var/cache/apt/archives --exclude boot --block-size=1 | cut -f 1)
+	DATA_SIZE=$((16 * 1024 * 1024))
 
 	# All partition sizes and starts will be aligned to this size
 	ALIGN="$((4 * 1024 * 1024))"
@@ -25,13 +26,16 @@ if [ "${NO_PRERUN_QCOW2}" = "0" ]; then
 	BOOT_PART_SIZE=$(((BOOT_SIZE + ALIGN - 1) / ALIGN * ALIGN))
 	ROOT_PART_START=$((BOOT_PART_START + BOOT_PART_SIZE))
 	ROOT_PART_SIZE=$(((ROOT_SIZE + ROOT_MARGIN + ALIGN  - 1) / ALIGN * ALIGN))
-	IMG_SIZE=$((BOOT_PART_START + BOOT_PART_SIZE + ROOT_PART_SIZE))
+	DATA_PART_START=$((ROOT_PART_START + ROOT_PART_SIZE))
+	DATA_PART_SIZE=$(((DATA_SIZE + ALIGN  - 1) / ALIGN * ALIGN))
+	IMG_SIZE=$((BOOT_PART_START + BOOT_PART_SIZE + ROOT_PART_SIZE + DATA_PART_SIZE))
 
 	truncate -s "${IMG_SIZE}" "${IMG_FILE}"
 
 	parted --script "${IMG_FILE}" mklabel msdos
 	parted --script "${IMG_FILE}" unit B mkpart primary fat32 "${BOOT_PART_START}" "$((BOOT_PART_START + BOOT_PART_SIZE - 1))"
 	parted --script "${IMG_FILE}" unit B mkpart primary ext4 "${ROOT_PART_START}" "$((ROOT_PART_START + ROOT_PART_SIZE - 1))"
+	parted --script "${IMG_FILE}" unit B mkpart primary ext4 "${DATA_PART_START}" "$((DATA_PART_START + DATA_PART_SIZE - 1))"
 
 	echo "Creating loop device..."
 	cnt=0
@@ -48,17 +52,21 @@ if [ "${NO_PRERUN_QCOW2}" = "0" ]; then
 
 	BOOT_DEV="${LOOP_DEV}p1"
 	ROOT_DEV="${LOOP_DEV}p2"
+	DATA_DEV="${LOOP_DEV}p3"
 
-	ROOT_FEATURES="^huge_file"
+	EXT4_FEATURES="^huge_file"
 	for FEATURE in 64bit; do
 	if grep -q "$FEATURE" /etc/mke2fs.conf; then
-		ROOT_FEATURES="^$FEATURE,$ROOT_FEATURES"
+		EXT4_FEATURES="^$FEATURE,$EXT4_FEATURES"
 	fi
 	done
 	mkdosfs -n boot -F 32 -s 4 -v "$BOOT_DEV" > /dev/null
-	mkfs.ext4 -L rootfs -O "$ROOT_FEATURES" "$ROOT_DEV" > /dev/null
+	mkfs.ext4 -L rootfs -O "$EXT4_FEATURES" "$ROOT_DEV" > /dev/null
+	mkfs.ext4 -L data -O "$EXT4_FEATURES" "$DATA_DEV" > /dev/null
 
 	mount -v "$ROOT_DEV" "${ROOTFS_DIR}" -t ext4
+	mkdir -p "${ROOTFS_DIR}/data"
+	mount -v "$DATA_DEV" "${ROOTFS_DIR}/data" -t ext4
 	mkdir -p "${ROOTFS_DIR}/boot"
 	mount -v "$BOOT_DEV" "${ROOTFS_DIR}/boot" -t vfat
 

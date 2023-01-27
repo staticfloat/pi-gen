@@ -1,3 +1,5 @@
-proc            /proc           proc    defaults          0       0
-BOOTDEV  /boot           vfat    defaults          0       2
-ROOTDEV  /               ext4    defaults,noatime  0       1
+proc     /proc                       proc    defaults             0    0
+BOOTDEV  /boot                       vfat    defaults,ro          0    2
+ROOTDEV  /                           ext4    defaults,noatime,ro  0    1
+DATADEV  /data                       ext4    defaults,noatime     0    2
+

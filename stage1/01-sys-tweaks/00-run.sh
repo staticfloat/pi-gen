@@ -15,4 +15,4 @@ fi
 echo "root:root" | chpasswd
 EOF
 
-
+mkdir -p "${ROOTFS_DIR}/data"
