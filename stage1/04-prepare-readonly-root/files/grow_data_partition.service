@@ -1,0 +1,13 @@
+
+[Unit]
+Description=Grow /data partition
+Requires=local-fs.target
+After=local-fs.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/grow_data_partition
+RemainAfterExit=true
+
+[Install]
+WantedBy=multi-user.target

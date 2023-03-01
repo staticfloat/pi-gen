@@ -99,7 +99,7 @@ do_resize () {
     fi
     /usr/sbin/partprobe
 
-    if ! /usr/sbin/e2fsck -f "$DATA_PART_DEV"; then
+    if ! /usr/sbin/e2fsck -y -f "$DATA_PART_DEV"; then
         echo "Cautionary fsck failed ($?)"
         return 1
     fi
