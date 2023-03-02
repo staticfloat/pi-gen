@@ -82,8 +82,11 @@ w
 EOF
     )
     if /usr/sbin/fdisk "$ROOT_DEV" >/dev/null <<<"${FDISK_CMD}"; then
+        mount -o remount,rw /
         sed -i "s/${OLD_DISKID}/${NEW_DISKID}/g" /etc/fstab
         sed -i "s/${OLD_DISKID}/${NEW_DISKID}/g" /boot/cmdline.txt
+        partprobe
+        mount -o remount,ro /
     else
         echo "fdisk failed! ($?)"
     fi
@@ -115,5 +118,7 @@ do_resize () {
 get_variables
 if should_resize; then
     do_resize
-    randomize_partuuid
+
+    # I want to do this, but it's too hard with remounting as read-only.  :(
+    #randomize_partuuid
 fi
