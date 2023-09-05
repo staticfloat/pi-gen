@@ -10,3 +10,4 @@ tmpfs    /var/tmp                    tmpfs   nosuid,nodev      0       0
 tmpfs    /var/lib/dhcp               tmpfs   nosuid,nodev      0       0
 tmpfs    /var/lib/systemd/timesync   tmpfs   nosuid,nodev      0       0
 tmpfs    /var/lib/systemd-logind     tmpfs   nosuid,nodev      0       0
+tmpfs    /var/lib/private            tmpfs   nosuid,nodev      0       0

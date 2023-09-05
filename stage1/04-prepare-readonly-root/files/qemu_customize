@@ -2,6 +2,9 @@
 
 set -euo pipefail
 
+# Ensure this is exported!
+export PATH
+
 # Do some `init` work
 mount -t proc proc /proc
 mount -t sysfs sys /sys

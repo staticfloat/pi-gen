@@ -3,6 +3,7 @@
 # Create the mountpoints, also check the `fstab` entry that creates a tmpfs
 mkdir -p "${ROOTFS_DIR}/var/lib/systemd/timesync"
 mkdir -p "${ROOTFS_DIR}/var/lib/systemd-logind"
+mkdir -p "${ROOTFS_DIR}/var/lib/private"
 
 # Also install our `ro` and `rw` scripts
 install -m 755 files/ro "${ROOTFS_DIR}/usr/local/bin/ro"
